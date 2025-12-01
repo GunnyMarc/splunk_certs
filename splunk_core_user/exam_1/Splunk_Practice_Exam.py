@@ -1227,7 +1227,7 @@ class SplunkPracticeExam:
             pass
     
     def finish_exam(self, auto_submit=False):
-        """Finish the exam and show results"""
+        """Finish the exam and show comprehensive results"""
         # Stop the timer
         self.stop_timer()
         
@@ -1262,50 +1262,45 @@ class SplunkPracticeExam:
         
         # Calculate domain scores
         domain_scores = {}
+        domain_names = {
+            "Domain 1.0": "Splunk Basics",
+            "Domain 2.0": "Basic Searching",
+            "Domain 3.0": "Using Fields in Searches",
+            "Domain 4.0": "Search Language Fundamentals",
+            "Domain 5.0": "Using Basic Transforming Commands",
+            "Domain 6.0": "Creating Reports and Dashboards",
+            "Domain 7.0": "Creating and Using Lookups",
+            "Domain 8.0": "Creating Scheduled Reports and Alerts"
+        }
+        
         for q in self.questions:
             domain = q.domain.split(':')[0].strip()
             if domain not in domain_scores:
-                domain_scores[domain] = {'correct': 0, 'total': 0}
+                domain_scores[domain] = {'correct': 0, 'total': 0, 'questions': []}
             domain_scores[domain]['total'] += 1
+            domain_scores[domain]['questions'].append(q)
             if q.is_correct():
                 domain_scores[domain]['correct'] += 1
         
-        # Build results message
-        result_message = f"""
-╔══════════════════════════════════════════╗
-║           EXAM RESULTS                    ║
-╚══════════════════════════════════════════╝
-
-⏱  Time Used: {time_used}
-📊 Score: {correct} / {total} ({percentage:.1f}%)
-
-═══════════════════════════════════════════
-BREAKDOWN BY DOMAIN:
-═══════════════════════════════════════════
-"""
-        
-        for domain, scores in sorted(domain_scores.items()):
-            pct = (scores['correct'] / scores['total']) * 100 if scores['total'] > 0 else 0
-            bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
-            result_message += f"\n{domain}:\n  {scores['correct']}/{scores['total']} ({pct:.0f}%) {bar}"
+        # Get missed questions
+        missed_questions = [q for q in self.questions if not q.is_correct()]
         
         # Passing criteria (typically 70% for Splunk certifications)
         passing = percentage >= 70
-        result_message += f"""
-
-═══════════════════════════════════════════
-STATUS: {'🎉 PASSED ✓' if passing else '❌ FAILED ✗'}
-(Passing score: 70%)
-═══════════════════════════════════════════
-"""
         
-        if passing:
-            result_message += "\nCongratulations! You're ready for the real exam!"
-        else:
-            result_message += "\nKeep studying! Review the explanations for missed questions."
+        # Identify weak domains (below 70%)
+        weak_domains = []
+        for domain, scores in domain_scores.items():
+            pct = (scores['correct'] / scores['total']) * 100 if scores['total'] > 0 else 0
+            if pct < 70:
+                weak_domains.append((domain, domain_names.get(domain, ""), pct))
         
-        # Show results in a larger dialog
-        self.show_results_dialog(result_message, percentage, passing)
+        # Show comprehensive results dialog
+        self.show_results_dialog(
+            correct, total, percentage, time_used, 
+            domain_scores, domain_names, missed_questions, 
+            weak_domains, passing
+        )
         
         # Update timer display
         self.timer_label.config(text=f"✓ Completed - {time_used}")
@@ -1313,30 +1308,286 @@ STATUS: {'🎉 PASSED ✓' if passing else '❌ FAILED ✗'}
         # Update display to show all explanations
         self.display_question()
     
-    def show_results_dialog(self, message: str, percentage: float, passed: bool):
-        """Show exam results in a custom dialog"""
+    def show_results_dialog(self, correct: int, total: int, percentage: float, 
+                           time_used: str, domain_scores: dict, domain_names: dict,
+                           missed_questions: list, weak_domains: list, passed: bool):
+        """Show comprehensive exam results in a tabbed dialog"""
         dialog = tk.Toplevel(self.root)
-        dialog.title("Exam Results")
-        dialog.geometry("500x600")
+        dialog.title("📊 Exam Results - Comprehensive Score Report")
+        dialog.geometry("750x700")
         dialog.transient(self.root)
         dialog.grab_set()
         
         # Center the dialog
         dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() - 500) // 2
-        y = (dialog.winfo_screenheight() - 600) // 2
+        x = (dialog.winfo_screenwidth() - 750) // 2
+        y = (dialog.winfo_screenheight() - 700) // 2
         dialog.geometry(f"+{x}+{y}")
         
-        # Results text
-        text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=('Courier', 10),
-                                        width=60, height=30)
-        text.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
-        text.insert(1.0, message)
-        text.config(state='disabled')
+        # Create notebook for tabs
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # ===== TAB 1: SUMMARY =====
+        summary_frame = ttk.Frame(notebook, padding="15")
+        notebook.add(summary_frame, text="📋 Summary")
+        
+        summary_text = scrolledtext.ScrolledText(summary_frame, wrap=tk.WORD, 
+                                                 font=('Courier', 11), height=28)
+        summary_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Build summary content
+        status_icon = "🎉 PASSED ✓" if passed else "❌ FAILED ✗"
+        status_color = "green" if passed else "red"
+        
+        summary_content = f"""
+╔═══════════════════════════════════════════════════════════════╗
+║                    EXAM RESULTS SUMMARY                        ║
+╚═══════════════════════════════════════════════════════════════╝
+
+    ┌─────────────────────────────────────────────────────┐
+    │  STATUS:  {status_icon:<42} │
+    │  (Passing Score: 70%)                               │
+    └─────────────────────────────────────────────────────┘
+
+    📊 OVERALL SCORE
+    ════════════════════════════════════════════════════
+    
+       Correct Answers:    {correct} out of {total}
+       Percentage:         {percentage:.1f}%
+       
+       Score Bar: [{"█" * int(percentage/5)}{"░" * (20 - int(percentage/5))}] {percentage:.1f}%
+    
+    ⏱  TIME STATISTICS
+    ════════════════════════════════════════════════════
+    
+       Time Used:          {time_used}
+       Time Allowed:       60:00
+       
+    📈 QUESTION BREAKDOWN
+    ════════════════════════════════════════════════════
+    
+       ✓ Correct:          {correct}
+       ✗ Incorrect:        {total - correct}
+       ○ Unanswered:       {sum(1 for q in self.questions if not q.is_answered())}
+       
+       Total Questions:    {total}
+
+"""
+        
+        if passed:
+            summary_content += """
+    🎊 CONGRATULATIONS!
+    ════════════════════════════════════════════════════
+    
+       You have successfully passed the practice exam!
+       You appear ready for the Splunk Core Certified User exam.
+       
+       Recommended next steps:
+       • Review any missed questions in the "Missed Questions" tab
+       • Take additional practice exams to reinforce knowledge
+       • Schedule your official certification exam
+"""
+        else:
+            summary_content += """
+    📚 KEEP STUDYING!
+    ════════════════════════════════════════════════════
+    
+       You did not achieve the passing score of 70%.
+       
+       Recommended next steps:
+       • Review all missed questions in the "Missed Questions" tab
+       • Focus on weak domains listed in the "Domain Scores" tab
+       • Study the official Splunk documentation
+       • Take the practice exam again after reviewing
+"""
+        
+        summary_text.insert(1.0, summary_content)
+        summary_text.config(state='disabled')
+        
+        # ===== TAB 2: DOMAIN SCORES =====
+        domain_frame = ttk.Frame(notebook, padding="15")
+        notebook.add(domain_frame, text="📊 Domain Scores")
+        
+        domain_text = scrolledtext.ScrolledText(domain_frame, wrap=tk.WORD, 
+                                                font=('Courier', 10), height=28)
+        domain_text.pack(fill=tk.BOTH, expand=True)
+        
+        domain_content = """
+╔═══════════════════════════════════════════════════════════════╗
+║                   SCORE BREAKDOWN BY DOMAIN                    ║
+╚═══════════════════════════════════════════════════════════════╝
+
+"""
+        
+        for domain, scores in sorted(domain_scores.items()):
+            pct = (scores['correct'] / scores['total']) * 100 if scores['total'] > 0 else 0
+            bar_filled = int(pct / 5)
+            bar = "█" * bar_filled + "░" * (20 - bar_filled)
+            
+            status = "✓ PASS" if pct >= 70 else "✗ NEEDS WORK"
+            domain_name = domain_names.get(domain, "")
+            
+            domain_content += f"""
+┌─────────────────────────────────────────────────────────────┐
+│ {domain}: {domain_name:<43} │
+├─────────────────────────────────────────────────────────────┤
+│ Score:      {scores['correct']}/{scores['total']} ({pct:.0f}%)                                       │
+│ Progress:   [{bar}]                    │
+│ Status:     {status:<48} │
+└─────────────────────────────────────────────────────────────┘
+"""
+        
+        # Add weak domains section if any
+        if weak_domains:
+            domain_content += """
+
+════════════════════════════════════════════════════════════════
+⚠️  DOMAINS NEEDING IMPROVEMENT (Below 70%)
+════════════════════════════════════════════════════════════════
+
+"""
+            for domain, name, pct in sorted(weak_domains, key=lambda x: x[2]):
+                domain_content += f"   • {domain}: {name} ({pct:.0f}%)\n"
+            
+            domain_content += """
+   
+   💡 Study Tip: Focus your review on these domains before
+      retaking the practice exam or attempting the real exam.
+"""
+        
+        domain_text.insert(1.0, domain_content)
+        domain_text.config(state='disabled')
+        
+        # ===== TAB 3: MISSED QUESTIONS =====
+        missed_frame = ttk.Frame(notebook, padding="15")
+        notebook.add(missed_frame, text=f"❌ Missed Questions ({len(missed_questions)})")
+        
+        missed_text = scrolledtext.ScrolledText(missed_frame, wrap=tk.WORD, 
+                                                font=('Courier', 10), height=28)
+        missed_text.pack(fill=tk.BOTH, expand=True)
+        
+        if missed_questions:
+            missed_content = f"""
+╔═══════════════════════════════════════════════════════════════╗
+║              MISSED QUESTIONS REVIEW ({len(missed_questions)} questions)              ║
+╚═══════════════════════════════════════════════════════════════╝
+
+Review these questions carefully to improve your score:
+
+"""
+            for i, q in enumerate(missed_questions, 1):
+                user_ans = ", ".join(sorted(q.user_answers)) if q.user_answers else "No answer"
+                correct_ans = ", ".join(sorted(q.correct_answers))
+                
+                missed_content += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Question {q.number} | {q.domain}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q: {q.text}
+
+   Your Answer:     {user_ans}
+   Correct Answer:  {correct_ans}
+   
+   📖 Explanation:
+   {q.explanation}
+
+"""
+        else:
+            missed_content = """
+╔═══════════════════════════════════════════════════════════════╗
+║                    PERFECT SCORE! 🎉                           ║
+╚═══════════════════════════════════════════════════════════════╝
+
+    Congratulations! You answered all questions correctly!
+    
+    You have demonstrated excellent knowledge of the
+    Splunk Core User certification topics.
+
+"""
+        
+        missed_text.insert(1.0, missed_content)
+        missed_text.config(state='disabled')
+        
+        # ===== TAB 4: ALL QUESTIONS =====
+        all_frame = ttk.Frame(notebook, padding="15")
+        notebook.add(all_frame, text="📝 All Questions")
+        
+        all_text = scrolledtext.ScrolledText(all_frame, wrap=tk.WORD, 
+                                             font=('Courier', 10), height=28)
+        all_text.pack(fill=tk.BOTH, expand=True)
+        
+        all_content = f"""
+╔═══════════════════════════════════════════════════════════════╗
+║                COMPLETE QUESTION REVIEW ({total} questions)             ║
+╚═══════════════════════════════════════════════════════════════╝
+
+"""
+        for q in self.questions:
+            result_icon = "✓" if q.is_correct() else "✗"
+            user_ans = ", ".join(sorted(q.user_answers)) if q.user_answers else "—"
+            correct_ans = ", ".join(sorted(q.correct_answers))
+            
+            all_content += f"""
+{result_icon} Q{q.number}: {q.text[:70]}{'...' if len(q.text) > 70 else ''}
+   Your: {user_ans:<10} | Correct: {correct_ans:<10} | {q.domain.split(':')[0]}
+"""
+        
+        all_text.insert(1.0, all_content)
+        all_text.config(state='disabled')
+        
+        # ===== BUTTON FRAME =====
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Export button
+        def export_results():
+            """Export results to a text file"""
+            from tkinter import filedialog
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+                title="Export Results"
+            )
+            if filename:
+                with open(filename, 'w') as f:
+                    f.write(f"SPLUNK CORE USER PRACTICE EXAM RESULTS\n")
+                    f.write(f"{'='*60}\n\n")
+                    f.write(f"Score: {correct}/{total} ({percentage:.1f}%)\n")
+                    f.write(f"Status: {'PASSED' if passed else 'FAILED'}\n")
+                    f.write(f"Time Used: {time_used}\n\n")
+                    f.write(f"DOMAIN BREAKDOWN:\n{'-'*40}\n")
+                    for domain, scores in sorted(domain_scores.items()):
+                        pct = (scores['correct'] / scores['total']) * 100 if scores['total'] > 0 else 0
+                        f.write(f"{domain}: {scores['correct']}/{scores['total']} ({pct:.0f}%)\n")
+                    if missed_questions:
+                        f.write(f"\nMISSED QUESTIONS:\n{'-'*40}\n")
+                        for q in missed_questions:
+                            f.write(f"\nQ{q.number}: {q.text}\n")
+                            f.write(f"Your Answer: {', '.join(sorted(q.user_answers)) if q.user_answers else 'None'}\n")
+                            f.write(f"Correct: {', '.join(sorted(q.correct_answers))}\n")
+                            f.write(f"Explanation: {q.explanation}\n")
+                messagebox.showinfo("Export Complete", f"Results exported to:\n{filename}")
+        
+        export_btn = ttk.Button(button_frame, text="💾 Export Results", command=export_results, width=18)
+        export_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Retake exam button
+        def retake_exam():
+            dialog.destroy()
+            self.root.destroy()
+            # Start a new instance
+            new_root = tk.Tk()
+            app = SplunkPracticeExam(new_root)
+            new_root.mainloop()
+        
+        retake_btn = ttk.Button(button_frame, text="🔄 Retake Exam", command=retake_exam, width=15)
+        retake_btn.pack(side=tk.LEFT, padx=5)
         
         # Close button
-        close_btn = ttk.Button(dialog, text="Close", command=dialog.destroy)
-        close_btn.pack(pady=10)
+        close_btn = ttk.Button(button_frame, text="Close", command=dialog.destroy, width=12)
+        close_btn.pack(side=tk.RIGHT, padx=5)
     
     def on_closing(self):
         """Handle window close event"""
